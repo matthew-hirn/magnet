@@ -102,9 +102,9 @@ def main(args):
         test_mask = np.repeat(test_mask[:,np.newaxis], splits, 1)
 
     for split in range(splits):
-        graphmodel = ChebNet(X_real.size(-1), L_real, L_img, K = args.K, label_dim=cluster_dim, layer = args.layer,
-                                activation = args.activation, num_filter = args.num_filter, to_radians = args.to_radians, dropout=args.dropout)    
-        model = nn.DataParallel(graphmodel)
+        model = ChebNet(X_real.size(-1), L_real, L_img, K = args.K, label_dim=cluster_dim, layer = args.layer,
+                                activation = args.activation, num_filter = args.num_filter, to_radians = args.to_radians, dropout=args.dropout).to(device)    
+        #model = nn.DataParallel(graphmodel)
         opt = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.l2)
 
         best_test_acc = 0.0

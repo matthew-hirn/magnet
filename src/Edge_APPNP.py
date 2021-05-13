@@ -103,8 +103,8 @@ def main(args):
             x = in_out_degree(edges, size).to(device)
         else:
             x = torch.ones(size).unsqueeze(-1).to(device)
-        graphmodel = APPNP_Link(x.size(-1), 2, filter_num=args.num_filter, alpha = args.alpha, dropout=args.dropout, K=args.K)
-        model = nn.DataParallel(graphmodel)
+        model = APPNP_Link(x.size(-1), 2, filter_num=args.num_filter, alpha = args.alpha, dropout=args.dropout, K=args.K).to(device)
+        #model = nn.DataParallel(graphmodel)
         opt = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.l2)
 
         y_train = np.r_[np.zeros(len(datasets[i]['train']['positive'].T)),
@@ -116,7 +116,7 @@ def main(args):
         y_train = torch.from_numpy(y_train).to(device)
         y_val   = torch.from_numpy(y_val).to(device)
         y_test  = torch.from_numpy(y_test).to(device)
-
+        edges = edges.to(device)
         #################################
         # Train/Validation/Test
         #################################
@@ -202,8 +202,8 @@ def main(args):
                     datasets[i]['test']['positive'].T, 
                     datasets[i]['test']['negative'].T)
         pred_label = out.max(dim = 1)[1]
-        test_acc   = acc(pred_label[:len(datasets[i]['test']['negative'].T)], y_test[:len(datasets[i]['test']['negative'].T)])
-        test_acc_all = acc(pred_label, y_test)
+        #test_acc   = acc(pred_label[:len(datasets[i]['test']['negative'].T)], y_test[:len(datasets[i]['test']['negative'].T)])
+        test_acc = acc(pred_label, y_test)
 
         model.load_state_dict(torch.load(log_path + '/model_latest'+str(i)+'.t7'))
         model.eval()
@@ -211,13 +211,13 @@ def main(args):
                     datasets[i]['test']['positive'].T, 
                     datasets[i]['test']['negative'].T)
         pred_label = out.max(dim = 1)[1]
-        test_acc_least = acc(pred_label[:len(datasets[i]['test']['negative'].T)], y_test[:len(datasets[i]['test']['negative'].T)])
-        test_acc_least_all = acc(pred_label, y_test)
+        #test_acc_least = acc(pred_label[:len(datasets[i]['test']['negative'].T)], y_test[:len(datasets[i]['test']['negative'].T)])
+        test_acc_least = acc(pred_label, y_test)
 
         ####################
         # Save testing results
         ####################
-        logstr = 'test_acc: '+str(np.round(test_acc,3))+'-'+str(np.round(test_acc_all,3))+' test_acc_latest: '+str(np.round(test_acc_least,3))+'-'+str(np.round(test_acc_least_all,3))
+        logstr = 'test_acc: '+str(np.round(test_acc,3))+' test_acc_latest: '+str(np.round(test_acc_least,3))
         print(logstr)
         with open(log_path + '/log'+str(i)+'.csv', status) as file:
             file.write(logstr)

@@ -97,12 +97,13 @@ def main(args):
 
         # get_appr_directed_adj(alpha, edge_index, num_nodes, dtype, edge_weight=None)
         edges, edge_weight = get_appr_directed_adj(args.alpha, edges.long(), size, x.dtype)
-
+        edges = edges.to(device)
+        edge_weight = edge_weight.to(device)
         ########################################
         # initialize model and load dataset
         ########################################
-        graphmodel = DiGCNet(x.size(-1), 2, filter_num=args.num_filter, dropout=args.dropout)
-        model = nn.DataParallel(graphmodel)
+        model = DiGCNet(x.size(-1), 2, filter_num=args.num_filter, dropout=args.dropout).to(device)
+        #model = nn.DataParallel(graphmodel)
         opt = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.l2)
 
         y_train = np.r_[np.zeros(len(datasets[i]['train']['positive'].T)),
@@ -196,8 +197,8 @@ def main(args):
                     datasets[i]['test']['negative'].T,
                     edge_weight)
         pred_label = out.max(dim = 1)[1]
-        test_acc   = acc(pred_label[:len(datasets[i]['test']['positive'].T)], y_test[:len(datasets[i]['test']['positive'].T)])
-        test_acc_all = acc(pred_label, y_test)
+        #test_acc   = acc(pred_label[:len(datasets[i]['test']['positive'].T)], y_test[:len(datasets[i]['test']['positive'].T)])
+        test_acc = acc(pred_label, y_test)
 
         model.load_state_dict(torch.load(log_path + '/model_latest'+str(i)+'.t7'))
         model.eval()
@@ -206,13 +207,13 @@ def main(args):
                     datasets[i]['test']['negative'].T,
                     edge_weight)
         pred_label = out.max(dim = 1)[1]
-        test_acc_least = acc(pred_label[:len(datasets[i]['test']['positive'].T)], y_test[:len(datasets[i]['test']['positive'].T)])
-        test_acc_least_all = acc(pred_label, y_test)
+        #test_acc_least = acc(pred_label[:len(datasets[i]['test']['positive'].T)], y_test[:len(datasets[i]['test']['positive'].T)])
+        test_acc_least = acc(pred_label, y_test)
 
         ####################
         # Save testing results
         ####################
-        logstr = 'test_acc: '+str(np.round(test_acc,3))+'-'+str(np.round(test_acc_all,3))+' test_acc_latest: '+str(np.round(test_acc_least,3))+'-'+str(np.round(test_acc_least_all,3))
+        logstr = 'test_acc: '+str(np.round(test_acc,3))+' test_acc_latest: '+str(np.round(test_acc_least,3))
         print(logstr)
         with open(log_path + '/log'+str(i)+'.csv', status) as file:
             file.write(logstr)

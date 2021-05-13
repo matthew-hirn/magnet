@@ -86,8 +86,8 @@ def main(args):
 
 
     for split in range(splits):
-        graphmodel = GIN_Model(data.x.size(-1), num_classes, filter_num=args.num_filter, dropout=args.dropout)    
-        model = nn.DataParallel(graphmodel)
+        model = GIN_Model(data.x.size(-1), num_classes, filter_num=args.num_filter, dropout=args.dropout).to(device)    
+        #model = nn.DataParallel(graphmodel)
         opt = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.l2)
 
         #################################

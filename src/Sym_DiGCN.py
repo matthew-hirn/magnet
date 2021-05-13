@@ -83,8 +83,8 @@ def main(args):
         data.test_mask = data.test_mask.unsqueeze(1).repeat(1, splits)
 
     for split in range(splits):
-        graphmodel = SymModel(data.x.size(-1), num_classes, filter_num=args.num_filter, dropout=args.dropout)    
-        model = nn.DataParallel(graphmodel)
+        model = SymModel(data.x.size(-1), num_classes, filter_num=args.num_filter, dropout=args.dropout).to(device)    
+        #model = nn.DataParallel(graphmodel)
         opt = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.l2)
 
         #################################

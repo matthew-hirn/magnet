@@ -88,8 +88,8 @@ def main(args):
 
 
     for split in range(splits):
-        graphmodel = APPNP_Model(data.x.size(-1), num_classes, filter_num=args.num_filter, alpha = args.alpha, dropout=args.dropout)    
-        model = nn.DataParallel(graphmodel)
+        model = APPNP_Model(data.x.size(-1), num_classes, filter_num=args.num_filter, alpha = args.alpha, dropout=args.dropout).to(device)
+        #model = nn.DataParallel(graphmodel)
         opt = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.l2)
 
         #################################

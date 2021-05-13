@@ -83,9 +83,11 @@ def main(args):
     
     edges, edge_weight = get_appr_directed_adj(args.alpha, data.edge_index.long(), data.y.size(-1), data.x.dtype)
     data = data.to(device)
+    edges = edges.to(device)
+    edge_weight = edge_weight.to(device)
     for split in range(splits):
-        graphmodel = DiModel(data.x.size(-1), num_classes, filter_num=args.num_filter, dropout=args.dropout)
-        model = nn.DataParallel(graphmodel)
+        model = DiModel(data.x.size(-1), num_classes, filter_num=args.num_filter, dropout=args.dropout).to(device)
+        #model = nn.DataParallel(graphmodel)
         opt = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.l2)
 
         #################################
