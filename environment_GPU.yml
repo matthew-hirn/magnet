@@ -1,4 +1,4 @@
-name: proj
+name: MagNet
 channels:
   - pytorch
   - anaconda
