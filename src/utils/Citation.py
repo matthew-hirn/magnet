@@ -20,6 +20,17 @@ from torch_scatter import scatter_add
 import scipy
 from torch_geometric.data import Dataset
 
+def load_citation_link(root="./data"):
+    g = load_npz_dataset(root)
+    adj = g['A']
+    coo = adj.tocoo()
+    values = coo.data
+    indices = np.vstack((coo.row, coo.col))
+    indices = torch.from_numpy(indices).long()
+    
+    data = Data(x=values, edge_index=indices, edge_weight=None, y=None)
+    return [data]
+
 def citation_datasets(root="./data", alpha=0.1, data_split = 10):
     # path = os.path.join(save_path, dataset)
     #os.makedirs(path, exist_ok=True)

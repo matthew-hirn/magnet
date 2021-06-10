@@ -44,17 +44,17 @@ def desymmetric_stochastic(sizes = [100, 100, 100],
                 else:
                     A[accum_x:sizes[i]+accum_x, accum_y:sizes[j]+accum_y] = 0
                     A[accum_y:sizes[j]+accum_y, accum_x:sizes[i]+accum_x] = 0
-                
-            x, y = np.where(original_A[accum_x:sizes[i]+accum_x, accum_y:sizes[j]+accum_y])
-            x1, x2, y1, y2 = train_test_split(x, y, test_size=off_diag_prob)
+            else:
             
-            A[x1+accum_x, y1+accum_y] = 0
-            A[y2+accum_y, x2+accum_x] = 0
+                x, y = np.where(original_A[accum_x:sizes[i]+accum_x, accum_y:sizes[j]+accum_y])
+                x1, x2, y1, y2 = train_test_split(x, y, test_size=off_diag_prob)
+
+                A[x1+accum_x, y1+accum_y] = 0
+                A[y2+accum_y, x2+accum_x] = 0
                 
             accum_y += sizes[j]
 
         accum_x += sizes[i]
-
     # for cycle clusters
     accum_x = np.sum(sizes[:-1])
     if cycle:
@@ -186,36 +186,13 @@ def main():
     p_in, p_inter = 0.1, 0.1
     prob = np.diag([p_in]*cluster)
     prob[prob == 0] = p_inter
-    for i, p_q in enumerate([0.95, 0.90, 0.85, 0.8, 0.75, 0.7, 0.65]): 
-        #prob += np.diag([p_inter]*(cluster-1), -1) + np.diag([p_inter]*(cluster-1), 1)
-        #prob[-1,0] = p_inter
-        #prob[0,-1] = p_inter
-        _, G, label = desymmetric_stochastic(sizes = sizes, probs = prob, off_diag_prob = p_q, seed=0, cycle=True, fill=True)
-        to_dataset(G, label, save_path = '../../dataset/data/tmp/syn/syn_tri_'+str(i)+'_fill.pk', train_examples_per_class=60, val_size=100)
-    '''
-    # synthetic datasets group #3                     #
-    # graphs by adding undirected clusters to  group 1#
-    node = 100
-    p_q = 0.9
-    for cluster_num in [5, 8, 10]:#,5,6]:
-        sizes = [node]*cluster_num
-        
-        cluster = cluster_num
-        p_in, p_inter = 0.1, 0.1
-        prob = np.diag([p_in]*cluster)
-        prob[prob == 0] = p_inter
-        
-        _, G, label = desymmetric_stochastic(sizes = sizes, probs = prob, cycle = False, off_diag_prob = p_q, seed=0)
-        to_dataset(G, label, save_path = '../../dataset/data/tmp/syn/syn_add_'+str(cluster)+'_0.pk', 
-                            train_examples_per_class=10, val_size=cluster_num*10)
-        
-        for add_cluster in range(cluster_num):
-            G = add_symmetric_blocks(G, cluster, 0.1, 0.05, add_to = add_cluster, seed = add_cluster)
-            label = np.r_[label, (cluster_num+add_cluster)*np.ones(node, dtype = 'int')]
-            to_dataset(G, label, save_path = '../../dataset/data/tmp/syn/syn_add_'+str(cluster_num)+'_'+str(add_cluster+1)+'.pk', 
-                            train_examples_per_class=10, val_size=cluster_num*10)
-            cluster += 1
-    '''
+
+    for p_q in [0.95,0.9,0.85,0.8]:
+        for seed in [0, 10, 20, 30, 40]:
+            _, A, label = desymmetric_stochastic(sizes = sizes, probs = prob, off_diag_prob = p_q, seed=seed, fill=True, cycle=True)
+            to_dataset(A, label, save_path = '../../dataset/data/tmp/syn/fill'+str(int(100*p_q))+'Seed'+str(seed)+'.pk', 
+            train_examples_per_class = 60, val_size=100)
+
     return
 
 if __name__ == "__main__":

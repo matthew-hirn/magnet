@@ -14,7 +14,7 @@ for data in [
         log_path = data
         for num_filter in [16, 32, 64]:
             for q in [0.01, 0.05, 0.1, 0.15, 0.2, 0.25]:
-                command = ('python MagNet.py ' 
+                command = ('python sparse_MagNet.py ' 
                             +' --dataset='+data
                             +' --q='+str(q)
                             +' --num_filter='+str(num_filter)

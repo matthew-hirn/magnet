@@ -9,7 +9,7 @@ from torch_geometric.utils import to_undirected
 from torch_geometric.datasets import WebKB, WikipediaNetwork
 
 #internel
-from utils.hermitian import hermitian_decomp, cheb_poly
+from utils.hermitian import *
 
 def load_cora(q, path = '../../dataset/cora/', save_pk = False, K = 1):
     #only graph structure without features
@@ -98,11 +98,14 @@ def load_raw_cora(q=0, path="../pygcn/data/cora/", dataset="cora", save_pk = Fal
 def load_syn(root, name = None):
     data = pk.load(open(root + '.pk', 'rb'))
     if os.path.isdir(root) == False:
-        os.makedirs(root)
+        try:
+            os.makedirs(root)
+        except FileExistsError:
+            print('Folder exists!')
     return [data]
 
 def geometric_dataset(q, K, root='../dataset/data/tmp/', subset='Cornell', dataset=WebKB, 
-                        load_only = False, save_pk = True, laplacian = True):
+                        load_only = False, save_pk = True, laplacian = True, gcn_appr = False):
     if subset == '':
         dataset = dataset(root=root)
     else:
@@ -120,10 +123,18 @@ def geometric_dataset(q, K, root='../dataset/data/tmp/', subset='Cornell', datas
 
     if load_only:
         return X, label, train_mask, val_mask, test_mask
-
-    L, w, v = hermitian_decomp(adj, q, norm=True, laplacian=laplacian, max_eigen = 2.0)
-    multi_order_laplacian = cheb_poly(L, K)
-
+    
+    if isinstance(q, list) == False:
+        L, _, _ = hermitian_decomp(adj, q, norm=True, laplacian=laplacian, max_eigen = 2.0, gcn_appr = gcn_appr)
+        multi_order_laplacian = cheb_poly(L, K)
+    else:
+        multi_order_laplacian = []
+        for value in q:
+            L, _, _ = hermitian_decomp(adj, value, norm=True, laplacian=laplacian, max_eigen = 2.0, gcn_appr = gcn_appr)
+            multi_l = cheb_poly(L, K)
+            multi_order_laplacian.append(multi_l)
+        multi_order_laplacian = np.array(multi_order_laplacian).transpose((1,0,2,3))
+    
     save_name = root+'/data'+str(q)+'_'+str(K)
     if laplacian == False:
         save_name += '_P'
@@ -133,7 +144,48 @@ def geometric_dataset(q, K, root='../dataset/data/tmp/', subset='Cornell', datas
         pk.dump(data, open(save_name+'.pk', 'wb'), protocol=pk.HIGHEST_PROTOCOL)
     return X, label, train_mask, val_mask, test_mask, multi_order_laplacian
 
-def to_edge_dataset(q, edge_index, K, data_split, size, root='../dataset/data/tmp/', laplacian=True, norm=True, max_eigen = 2.0):
+# sparse version of function geometric_dataset() 
+def geometric_dataset_sparse(q, K, root='../dataset/data/tmp/', subset='Cornell', dataset=WebKB, 
+                        load_only = False, save_pk = True, laplacian = True, gcn_appr = False):
+    if subset == '':
+        dataset = dataset(root=root)
+    else:
+        dataset = dataset(root=root, name=subset)
+
+    size = dataset[0].y.size(-1)
+    #adj = torch.zeros(size, size).data.numpy().astype('uint8')
+    #adj[dataset[0].edge_index[0], dataset[0].edge_index[1]] = 1
+
+    f_node, e_node = dataset[0].edge_index[0], dataset[0].edge_index[1]
+
+    label = dataset[0].y.data.numpy().astype('int')
+    X = dataset[0].x.data.numpy().astype('float32')
+    train_mask = dataset[0].train_mask.data.numpy().astype('bool_')
+    val_mask = dataset[0].val_mask.data.numpy().astype('bool_')
+    test_mask = dataset[0].test_mask.data.numpy().astype('bool_')
+
+    if load_only:
+        return X, label, train_mask, val_mask, test_mask
+    
+    try:
+        L = hermitian_decomp_sparse(f_node, e_node, size, q, norm=True, laplacian=laplacian, 
+            max_eigen = 2.0, gcn_appr = gcn_appr, edge_weight = dataset[0].edge_weight)
+    except AttributeError:
+        L = hermitian_decomp_sparse(f_node, e_node, size, q, norm=True, laplacian=laplacian, 
+            max_eigen = 2.0, gcn_appr = gcn_appr, edge_weight = None)
+
+    multi_order_laplacian = cheb_poly_sparse(L, K)
+    
+    save_name = root+'/data'+str(q)+'_'+str(K)
+    if laplacian == False:
+        save_name += '_P'
+    if save_pk:
+        data = {}
+        data['L'] = multi_order_laplacian
+        pk.dump(data, open(save_name+'_sparse.pk', 'wb'), protocol=pk.HIGHEST_PROTOCOL)
+    return X, label, train_mask, val_mask, test_mask, multi_order_laplacian
+
+def to_edge_dataset(q, edge_index, K, data_split, size, root='../dataset/data/tmp/', laplacian=True, norm=True, max_eigen = 2.0, gcn_appr = False):
     save_name = root+'/edge_'+str(q)+'_'+str(K)+'_'+str(data_split)+'.pk'
     if os.path.isfile(save_name):
         multi_order_laplacian = pk.load(open(save_name, 'rb'))
@@ -142,16 +194,50 @@ def to_edge_dataset(q, edge_index, K, data_split, size, root='../dataset/data/tm
     adj = torch.zeros(size, size).data.numpy().astype('uint8')
     adj[edge_index[0], edge_index[1]] = 1
 
-    L, w, v = hermitian_decomp(adj, q, norm=norm, laplacian=laplacian, max_eigen=max_eigen)
-    multi_order_laplacian = cheb_poly(L, K)
+    #L, w, v = hermitian_decomp(adj, q, norm=norm, laplacian=laplacian, max_eigen=max_eigen, gcn_appr = gcn_appr)
+    #multi_order_laplacian = cheb_poly(L, K)
 
     #if laplacian == False:
     #    save_name += '_P'
+    
+    if isinstance(q, list) == False:
+        L, _, _ = hermitian_decomp(adj, q, norm=True, laplacian=laplacian, max_eigen = 2.0, gcn_appr = gcn_appr)
+        multi_order_laplacian = cheb_poly(L, K)
+    else:
+        multi_order_laplacian = []
+        for value in q:
+            L, _, _ = hermitian_decomp(adj, q, norm=True, laplacian=laplacian, max_eigen = 2.0, gcn_appr = gcn_appr)
+            multi_l = cheb_poly(L, K)
+            multi_order_laplacian.append(multi_l)
+        multi_order_laplacian = np.array(multi_order_laplacian).transpose((1,0,2,3))
 
     #pk.dump(multi_order_laplacian, open(save_name, 'wb'), protocol=pk.HIGHEST_PROTOCOL)
     return multi_order_laplacian
 
-def F_in_out(edge_index, size):
+def to_edge_dataset_sparse(q, edge_index, K, data_split, size, root='../dataset/data/tmp/', laplacian=True, norm=True, max_eigen = 2.0, gcn_appr = False):
+    save_name = root+'/edge_'+str(q)+'_'+str(K)+'_'+str(data_split)+'.pk'
+    if os.path.isfile(save_name):
+        multi_order_laplacian = pk.load(open(save_name, 'rb'))
+        return multi_order_laplacian
+
+    f_node, e_node = edge_index[0], edge_index[1]
+    L = hermitian_decomp_sparse(f_node, e_node, size, q, norm=True, laplacian=laplacian, max_eigen = 2.0, gcn_appr = gcn_appr)
+    multi_order_laplacian = cheb_poly_sparse(L, K)
+
+    return multi_order_laplacian
+
+def F_in_out(edge_index, size, edge_weight=None):
+    if edge_weight is not None:
+        a = sp.coo_matrix((edge_weight, edge_index), shape=(size, size)).tocsc()
+    else:
+        a = sp.coo_matrix((np.ones(len(edge_index[0])), edge_index), shape=(size, size)).tocsc()
+    
+    out_degree = np.array(a.sum(axis=0))[0]
+    out_degree[out_degree == 0] = 1
+
+    in_degree = np.array(a.sum(axis=1))[:, 0]
+    in_degree[in_degree == 0] = 1
+    '''
     # can be more efficient
     a = np.zeros((size, size), dtype=np.uint8)
     a[edge_index[0], edge_index[1]] = 1
@@ -161,7 +247,7 @@ def F_in_out(edge_index, size):
     
     in_degree = np.sum(a, axis = 0)
     in_degree[in_degree == 0] = 1
-
+    '''
     # sparse implementation
     a = sp.csr_matrix(a)
     A_in = sp.csr_matrix(np.zeros((size, size)))

@@ -1,5 +1,5 @@
 # MagNet
-MagNet: A MagNetic Neural Network for Directed Graphs
+MagNet: A Neural Network for Directed Graphs
 
 ## Environment Setup
 ### Overview

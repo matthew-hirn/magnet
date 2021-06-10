@@ -10,7 +10,7 @@ for data in [
              'Citeseer/', 
              'WikiCS/', 
             ]:
-    drop_prob = '0.5'
+    drop_prob = '0.4'
     if data in ['WikiCS/']:
         drop_prob = '0.8'
 

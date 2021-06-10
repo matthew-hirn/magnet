@@ -1,59 +1,64 @@
 # external files
 import numpy as np
 import pickle as pk
+from scipy import sparse
 import torch.optim as optim
 from datetime import datetime
 import os, time, argparse, csv
 from collections import Counter
 import torch.nn.functional as F
+from torch_sparse import SparseTensor
 from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch_geometric.datasets import WebKB, WikipediaNetwork, WikiCS
 
 # internal files
-from layer.DiGCN import *
 from utils.Citation import *
-from layer.geometric_baselines import *
-from torch_geometric.utils import to_undirected
-from utils.preprocess import geometric_dataset, load_syn
+from layer.sparse_magnet import *
+from utils.preprocess import geometric_dataset_sparse, load_syn
 from utils.save_settings import write_log
-from utils.hermitian import hermitian_decomp
-from utils.edge_data import get_appr_directed_adj, get_second_directed_adj
+from utils.hermitian import hermitian_decomp_sparse
 
 # select cuda device if available
 cuda_device = 0
 device = torch.device("cuda:%d" % cuda_device if torch.cuda.is_available() else "cpu")
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="baseline--Digraph")
-
+    parser = argparse.ArgumentParser(description="MagNet Conv (sparse version)")
     parser.add_argument('--log_root', type=str, default='../logs/', help='the path saving model.t7 and the training process')
     parser.add_argument('--log_path', type=str, default='test', help='the path saving model.t7 and the training process, the name of folder will be log/(current time)')
     parser.add_argument('--data_path', type=str, default='../dataset/data/tmp/', help='data set folder, for default format see dataset/cora/cora.edges and cora.node_labels')
     parser.add_argument('--dataset', type=str, default='WebKB/Cornell', help='data set selection')
 
-    parser.add_argument('--epochs', type=int, default=1500, help='training epochs')
-    parser.add_argument('--num_filter', type=int, default=2, help='num of filters')
-    parser.add_argument('--p_q', type=float, default=0.95, help='direction strength, from 0.5 to 1.')
-    parser.add_argument('--p_inter', type=float, default=0.1, help='inter_cluster edge probabilities.')
-    parser.add_argument('--method_name', type=str, default='DiG', help='method name')
-    parser.add_argument('--seed', type=int, default=0, help='random seed for training testing split/random graph generation')
+    parser.add_argument('--epochs', type=int, default=3000, help='Number of (maximal) training epochs.')
+    parser.add_argument('--q', type=float, default=0, help='q value for the phase matrix')
+    parser.add_argument('--p_q', type=float, default=0.95, help='Direction strength, from 0.5 to 1.')
+    parser.add_argument('--p_inter', type=float, default=0.1, help='Inter-cluster edge probabilities.')
+    parser.add_argument('--method_name', type=str, default='Magnet', help='method name')
+    parser.add_argument('--seed', type=int, default=0, help='Random seed for training testing split/random graph generation.')
 
+    parser.add_argument('--K', type=int, default=2, help='K for cheb series')
+    parser.add_argument('--layer', type=int, default=2, help='How many layers of gcn in the model, default 2 layers.')
     parser.add_argument('--dropout', type=float, default=0.0, help='dropout prob')
-    parser.add_argument('--debug', '-D', action='store_true', help='debug mode')
-    parser.add_argument('--new_setting', '-NS', action='store_true', help='whether not to load best settings')
 
-    parser.add_argument('--layer', type=int, default=2, help='number of layers (2 or 3), default: 2')
+    parser.add_argument('--debug', '-D', action='store_true', help='debug mode')
+    parser.add_argument('--new_setting', '-NS', action='store_true', help='Whether not to load best settings.')
+
     parser.add_argument('--lr', type=float, default=5e-3, help='learning rate')
     parser.add_argument('--l2', type=float, default=5e-4, help='l2 regularizer')
-
-    parser.add_argument('--alpha', type=float, default=0.1, help='alpha teleport prob')
+    
+    parser.add_argument('-activation', '-a', action='store_true', help='if use activation function')
+    parser.add_argument('--num_filter', type=int, default=1, help='num of filters')
     return parser.parse_args()
 
-def acc(pred, label, mask):
-    correct = int(pred[mask].eq(label[mask]).sum().item())
-    acc = correct / int(mask.sum())
-    return acc
+def sparse_mx_to_torch_sparse_tensor(sparse_mx):
+    """Convert a scipy sparse matrix to a torch sparse tensor."""
+    sparse_mx = sparse_mx.tocoo().astype(np.float32)
+    indices = torch.from_numpy(
+        np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
+    values = torch.from_numpy(sparse_mx.data)
+    shape = torch.Size(sparse_mx.shape)
+    return torch.sparse.FloatTensor(indices, values, shape)
 
 def main(args):
     
@@ -64,65 +69,68 @@ def main(args):
             os.makedirs(log_path)
         except FileExistsError:
             print('Folder exists!')
+
     load_func, subset = args.dataset.split('/')[0], args.dataset.split('/')[1]
     if load_func == 'WebKB':
         load_func = WebKB
-        dataset = load_func(root=args.data_path, name=subset)
     elif load_func == 'WikipediaNetwork':
         load_func = WikipediaNetwork
-        dataset = load_func(root=args.data_path, name=subset)
     elif load_func == 'WikiCS':
         load_func = WikiCS
-        dataset = load_func(root=args.data_path)
     elif load_func == 'cora_ml':
-        dataset = citation_datasets(root='../dataset/data/tmp/cora_ml/cora_ml.npz')
+        load_func = citation_datasets
     elif load_func == 'citeseer_npz':
-        dataset = citation_datasets(root='../dataset/data/tmp/citeseer_npz/citeseer_npz.npz')
+        load_func = citation_datasets
     else:
-        dataset = load_syn(args.data_path + args.dataset, None)
+        load_func = load_syn
 
-    if os.path.isdir(log_path) == False:
-        os.makedirs(log_path)
 
-    data = dataset[0]
-    if not data.__contains__('edge_weight'):
-        data.edge_weight = None
+    _file_ = args.data_path+args.dataset+'/data'+str(args.q)+'_'+str(args.K)+'_sparse.pk'
+    if os.path.isfile(_file_):
+        data = pk.load(open(_file_, 'rb')) 
+        L = data['L']
+        X, label, train_mask, val_mask, test_mask = geometric_dataset_sparse(args.q, args.K, 
+                        root=args.data_path+args.dataset, subset=subset,
+                        dataset = load_func, load_only = True, save_pk = False)
     else:
-        data.edge_weight = torch.FloatTensor(data.edge_weight)
-    data.y = data.y.long()
-    num_classes = (data.y.max() - data.y.min() + 1).detach().numpy()
-    
+        X, label, train_mask, val_mask, test_mask, L = geometric_dataset_sparse(args.q, args.K, 
+                                root=args.data_path+args.dataset, subset=subset,
+                                dataset = load_func, load_only = False, save_pk = True)
+  
     # normalize label, the minimum should be 0 as class index
-    splits = data.train_mask.shape[1]
-    if len(data.test_mask.shape) == 1:
-        data.test_mask = data.test_mask.unsqueeze(1).repeat(1, splits)
-    edge_index1, edge_weights1 = get_appr_directed_adj(args.alpha, data.edge_index.long(), data.y.size(-1), data.x.dtype, data.edge_weight)
-    edge_index1 = edge_index1.to(device)
-    edge_weights1 = edge_weights1.to(device)
-    if args.method_name[-2:] == 'ib':
-        edge_index2, edge_weights2 = get_second_directed_adj(data.edge_index.long(), data.y.size(-1), data.x.dtype, data.edge_weight)
-        edge_index2 = edge_index2.to(device)
-        edge_weights2 = edge_weights2.to(device)
-        edges = (edge_index1, edge_index2)
-        edge_weight = (edge_weights1, edge_weights2)
-        del edge_index2, edge_weights2
-    else:
-        edges = edge_index1
-        edge_weight = edge_weights1
-    del edge_index1, edge_weights1
-    data = data.to(device)
+    _label_ = label - np.amin(label)
+    cluster_dim = np.amax(_label_)+1
+
+    # convert dense laplacian to sparse matrix
+    L_img = []
+    L_real = []
+    for i in range(len(L)):
+        L_img.append( sparse_mx_to_torch_sparse_tensor(L[i].imag).to(device) )
+        L_real.append( sparse_mx_to_torch_sparse_tensor(L[i].real).to(device) )
+
+    label = torch.from_numpy(_label_[np.newaxis]).to(device)
+    X_img  = torch.FloatTensor(X).to(device)
+    X_real = torch.FloatTensor(X).to(device)
+    criterion = nn.NLLLoss()
+
+    splits = train_mask.shape[1]
+    if len(test_mask.shape) == 1:
+        #data.test_mask = test_mask.unsqueeze(1).repeat(1, splits)
+        test_mask = np.repeat(test_mask[:,np.newaxis], splits, 1)
+
     results = np.zeros((splits, 4))
     for split in range(splits):
         log_str_full = ''
-        if not args.method_name[-2:] == 'ib':
-            graphmodel = DiModel(data.x.size(-1), num_classes, filter_num=args.num_filter, 
-                                    dropout=args.dropout, layer=args.layer).to(device)
-        else:
-            graphmodel = DiGCN_IB(data.x.size(-1), hidden=args.num_filter, 
-                                    num_classes=num_classes, dropout=args.dropout,
-                                    layer=args.layer).to(device)
-        model = graphmodel # nn.DataParallel(graphmodel)
+
+        model = ChebNet(X_real.size(-1), L_real, L_img, K = args.K, label_dim=cluster_dim, layer = args.layer,
+                                activation = args.activation, num_filter = args.num_filter, dropout=args.dropout).to(device)    
+ 
         opt = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.l2)
+
+        best_test_acc = 0.0
+        train_index = train_mask[:,split]
+        val_index = val_mask[:,split]
+        test_index = test_mask[:,split]
 
         #################################
         # Train/Validation/Test
@@ -134,43 +142,42 @@ def main(args):
             ####################
             # Train
             ####################
-            train_loss, train_acc = 0.0, 0.0
+            count, train_loss, train_acc = 0.0, 0.0, 0.0
 
             # for loop for batch loading
+            count += np.sum(train_index)
+
             model.train()
-            out = model(data.x, edges, edge_weight)
-
-            train_loss = F.nll_loss(out[data.train_mask[:,split]], data.y[data.train_mask[:,split]])
-            pred_label = out.max(dim = 1)[1]
-            
-            train_acc = acc(pred_label, data.y, data.train_mask[:,split])
-
+            preds = model(X_real, X_img)
+            train_loss = criterion(preds[:,:,train_index], label[:,train_index])
+            pred_label = preds.max(dim = 1)[1]
+            train_acc = 1.0*((pred_label[:,train_index] == label[:,train_index])).sum().detach().item()/count
             opt.zero_grad()
             train_loss.backward()
             opt.step()
-
+            
             outstrtrain = 'Train loss:, %.6f, acc:, %.3f,' % (train_loss.detach().item(), train_acc)
             #scheduler.step()
-            
             ####################
             # Validation
             ####################
             model.eval()
-            test_loss, test_acc = 0.0, 0.0
+            count, test_loss, test_acc = 0.0, 0.0, 0.0
             
-            out = model(data.x, edges, edge_weight)
-            pred_label = out.max(dim = 1)[1]            
+            # for loop for batch loading
+            count += np.sum(val_index)
+            preds = model(X_real, X_img)
+            pred_label = preds.max(dim = 1)[1]
 
-            test_loss = F.nll_loss(out[data.val_mask[:,split]], data.y[data.val_mask[:,split]])
-            test_acc = acc(pred_label, data.y, data.val_mask[:,split])
+            test_loss = criterion(preds[:,:,val_index], label[:,val_index])
+            test_acc = 1.0*((pred_label[:,val_index] == label[:,val_index])).sum().detach().item()/count
 
-            outstrval = ' Test loss:, %.6f, acc: ,%.3f,' % (test_loss.detach().item(), test_acc)
+            outstrval = ' Test loss:, %.6f, acc:, %.3f,' % (test_loss.detach().item(), test_acc)
             
             duration = "---, %.4f, seconds ---" % (time.time() - start_time)
-            log_str = ("%d, / ,%d, epoch," % (epoch, args.epochs))+outstrtrain+outstrval+duration
+            log_str = ("%d ,/, %d ,epoch," % (epoch, args.epochs))+outstrtrain+outstrval+duration
             log_str_full += log_str + '\n'
             #print(log_str)
-
 
             ####################
             # Save weights
@@ -193,24 +200,27 @@ def main(args):
         ####################
         model.load_state_dict(torch.load(log_path + '/model'+str(split)+'.t7'))
         model.eval()
-        preds = model(data.x, edges, edge_weight)
+        preds = model(X_real, X_img)
         pred_label = preds.max(dim = 1)[1]
-    
         np.save(log_path + '/pred' + str(split), pred_label.to('cpu'))
     
-        acc_train = acc(pred_label, data.y, data.val_mask[:,split])
-        acc_test = acc(pred_label, data.y, data.test_mask[:,split])
+        count = np.sum(val_index)
+        acc_train = (1.0*((pred_label[:,val_index] == label[:,val_index])).sum().detach().item())/count
+
+        count = np.sum(test_index)
+        acc_test = (1.0*((pred_label[:,test_index] == label[:,test_index])).sum().detach().item())/count
 
         model.load_state_dict(torch.load(log_path + '/model_latest'+str(split)+'.t7'))
         model.eval()
-        preds = model(data.x, edges, edge_weight)
+        preds = model(X_real, X_img)
         pred_label = preds.max(dim = 1)[1]
-    
         np.save(log_path + '/pred_latest' + str(split), pred_label.to('cpu'))
     
-    
-        acc_train_latest = acc(pred_label, data.y, data.val_mask[:,split])
-        acc_test_latest = acc(pred_label, data.y, data.test_mask[:,split])
+        count = np.sum(val_index)
+        acc_train_latest = (1.0*((pred_label[:,val_index] == label[:,val_index])).sum().detach().item())/count
+
+        count = np.sum(test_index)
+        acc_test_latest = (1.0*((pred_label[:,test_index] == label[:,test_index])).sum().detach().item())/count
 
         ####################
         # Save testing results
@@ -274,25 +284,22 @@ if __name__ == "__main__":
                 }
                 dataset = 'syn/syn_tri_' + str(dataset_name_dict[args.p_q]) + '_fill'
             setting_dict_curr = setting_dict[dataset][args.method_name].split(',')
-            args.alpha = float(setting_dict_curr[setting_dict_curr.index('alpha')+1])
             try:
                 args.num_filter = int(setting_dict_curr[setting_dict_curr.index('num_filter')+1])
             except ValueError:
-                try:
-                    args.num_filter = int(setting_dict_curr[setting_dict_curr.index('num_filters')+1])
-                except ValueError:
-                    pass
-            args.lr = float(setting_dict_curr[setting_dict_curr.index('lr')+1])
+                pass
             try:
                 args.layer = int(setting_dict_curr[setting_dict_curr.index('layer')+1])
             except ValueError:
                 pass
+            args.lr = float(setting_dict_curr[setting_dict_curr.index('lr')+1])
+            args.q = float(setting_dict_curr[setting_dict_curr.index('q')+1])
     if os.path.isdir(dir_name) == False:
         try:
             os.makedirs(dir_name)
         except FileExistsError:
             print('Folder exists!')
-    save_name = args.method_name + 'lr' + str(int(args.lr*1000)) + 'num_filters' + str(int(args.num_filter)) + 'alpha' + str(int(100*args.alpha)) + 'layer' + str(int(args.layer))
+    save_name = args.method_name + 'lr' + str(int(args.lr*1000)) + 'num_filters' + str(int(args.num_filter)) + 'q' + str(int(100*args.q)) + 'layer' + str(int(args.layer))
     args.save_name = save_name
     results = main(args)
     np.save(dir_name+save_name, results)
