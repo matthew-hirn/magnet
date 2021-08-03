@@ -49,14 +49,15 @@ def parse_args():
     parser.add_argument('--l2', type=float, default=5e-4, help='l2 regularizer')
 
     parser.add_argument('-to_undirected', '-tud', action='store_true', help='if convert graph to undirecteds')
+    parser.add_argument('--randomseed', type=int, default=-1, help='if set random seed in training')
     return parser.parse_args()
-
 def acc(pred, label, mask):
     correct = int(pred[mask].eq(label[mask]).sum().item())
     acc = correct / int(mask.sum())
     return acc
-
 def main(args):
+    if args.randomseed > 0:
+        torch.manual_seed(args.randomseed)
     
     date_time = datetime.now().strftime('%m-%d-%H:%M:%S')
     log_path = os.path.join(args.log_root, args.log_path, args.save_name, date_time)

@@ -49,6 +49,7 @@ def parse_args():
     
     parser.add_argument('-activation', '-a', action='store_true', help='if use activation function')
     parser.add_argument('--num_filter', type=int, default=1, help='num of filters')
+    parser.add_argument('--randomseed', type=int, default=-1, help='if set random seed in training')
     return parser.parse_args()
 
 def sparse_mx_to_torch_sparse_tensor(sparse_mx):
@@ -61,6 +62,8 @@ def sparse_mx_to_torch_sparse_tensor(sparse_mx):
     return torch.sparse.FloatTensor(indices, values, shape)
 
 def main(args):
+    if args.randomseed > 0:
+        torch.manual_seed(args.randomseed)
     
     date_time = datetime.now().strftime('%m-%d-%H:%M:%S')
     log_path = os.path.join(args.log_root, args.log_path, args.save_name, date_time)
@@ -290,6 +293,10 @@ if __name__ == "__main__":
                 pass
             try:
                 args.layer = int(setting_dict_curr[setting_dict_curr.index('layer')+1])
+            except ValueError:
+                pass
+            try:
+                args.K = int(setting_dict_curr[setting_dict_curr.index('K')+1])
             except ValueError:
                 pass
             args.lr = float(setting_dict_curr[setting_dict_curr.index('lr')+1])
