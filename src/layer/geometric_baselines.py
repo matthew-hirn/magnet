@@ -154,7 +154,7 @@ class GAT_Link(torch.nn.Module):
 
 '''
 ####################################################################
-# Link Prediction Models in paper
+# Link Prediction Models in old versions of the paper
 ####################################################################
 class Sym_Link(torch.nn.Module):
     def __init__(self, input_dim, out_dim, filter_num, dropout = False):
