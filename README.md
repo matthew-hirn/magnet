@@ -84,7 +84,7 @@ mkdir Output
 
 ## Options
 <p align="justify">
-DIGRAC provides the following command line arguments, which can be viewed in the ./src/param_parser.py.
+MagNet provides the following command line arguments, which can be viewed in the ./src/param_parser.py.
 </p>
 
 ### Synthetic data options for node classification task:
