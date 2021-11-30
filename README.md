@@ -13,9 +13,10 @@ The project has been tested on the following environment specification:
 
 > The implementation of MagNet without baselines: [SimpleMagNet](https://github.com/XitongZhang1994/SimpleMagNet)
 
+### Installation
 ***There are two installation methods listed below. Please try to install the packages manually if the first method fails.***
 
-### Installation method 1 (.yml files)
+#### Installation method 1 (.yml files)
 You should handle (1),(2) yourself. For (3), (4), (5) and (6), we provide a list of steps to install them.
 
 We provide two examples of envionmental setup, one with CUDA 10.2 and GPU, the other with CPU.
@@ -34,7 +35,7 @@ conda env create -f environment_CPU.yml
 ```
 
 
-### Installation method 2 (manual installation)
+#### Installation method 2 (manual installation)
 The codebase is implemented in Python 3.6.12. package versions used for development are below.
 ```
 networkx           2.5
