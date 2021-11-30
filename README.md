@@ -11,6 +11,10 @@ The project has been tested on the following environment specification:
 5. Pytorch 1.8.0 (built against CUDA 10.2) and Python 1.6.0 (built against CUDA 9.2)
 6. Other libraries and python packages (See below)
 
+> The implementation of MagNet without baselines: [SimpleMagNet](https://github.com/XitongZhang1994/SimpleMagNet)
+
+***There are two installation methods listed below. Please try to install the packages manually if the first method fails.***
+
 ### Installation method 1 (.yml files)
 You should handle (1),(2) yourself. For (3), (4), (5) and (6), we provide a list of steps to install them.
 
