@@ -1,6 +1,17 @@
 # MagNet
 MagNet: A Neural Network for Directed Graphs
 
+```
+@article{zhang2021magnet,
+  title={Magnet: A neural network for directed graphs},
+  author={Zhang, Xitong and He, Yixuan and Brugnone, Nathan and Perlmutter, Michael and Hirn, Matthew},
+  journal={Advances in Neural Information Processing Systems},
+  volume={34},
+  pages={27003--27015},
+  year={2021}
+}
+```
+
 ## Environment Setup
 ### Overview
 The project has been tested on the following environment specification:
