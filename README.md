@@ -12,6 +12,18 @@ MagNet: A Neural Network for Directed Graphs
 }
 ```
 
+MagNet is included in the package: [PyTorch Geometric Signed Directed][1]
+[1]: <https://pytorch-geometric-signed-directed.readthedocs.io/en/latest/> "PyTorch Geometric Signed Directed"
+
+```
+@article{he2022pytorch,
+        title={{PyTorch Geometric Signed Directed: A Survey and Software on Graph Neural Networks for Signed and Directed Graphs}},
+        author={He, Yixuan and Zhang, Xitong and Huang, Junjie and Rozemberczki, Benedek and Cucuringu, Mihai and Reinert, Gesine},
+        journal={arXiv preprint arXiv:2202.10793},
+        year={2022}
+}
+```
+
 ## Environment Setup
 ### Overview
 The project has been tested on the following environment specification:
